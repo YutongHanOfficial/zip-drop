@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Zip Drop</title>
+  <meta name="description" content="You get a ZIP code. Drop a pin where you think it is on the US map. The closer you are, the more points you score.">
+  <meta name="theme-color" content="#0e1726">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 4C20 4 11 13 11 25c0 16 21 35 21 35s21-19 21-35C53 13 44 4 32 4z' fill='%23ff5a4e'/%3E%3Ccircle cx='32' cy='25' r='8' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;800&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-pin" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4C20 4 11 13 11 25c0 16 21 35 21 35s21-19 21-35C53 13 44 4 32 4z"/><circle cx="32" cy="25" r="8"/></svg>
+        <span>Zip<b>Drop</b></span>
+      </div>
+      <div class="hud" id="hud" hidden>
+        <div class="hud-item"><span class="hud-label">Round</span><span class="hud-value" id="hud-round">1/10</span></div>
+        <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" id="hud-score">0</span></div>
+        <div class="hud-item" id="hud-timer-wrap" hidden><span class="hud-label">Time</span><span class="hud-value" id="hud-timer">30</span></div>
+      </div>
+      <button class="icon-btn" id="btn-quit" title="Quit to menu" hidden aria-label="Quit to menu">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+
+    <main class="stage">
+      <div class="map-wrap" id="map-wrap">
+        <div id="map" role="application" aria-label="Map of the United States"></div>
+
+        <div class="map-ctrl">
+          <div class="seg" id="region-ctrl" aria-label="Jump to region">
+            <button data-region="lower48">Lower 48</button>
+            <button data-region="alaska">Alaska</button>
+            <button data-region="hawaii">Hawaii</button>
+          </div>
+          <div class="seg" id="basemap-ctrl" aria-label="Map style">
+            <button data-layer="hybrid">Hybrid</button>
+            <button data-layer="satellite">Satellite</button>
+            <button data-layer="streets">Streets</button>
+          </div>
+        </div>
+
+        <div class="zoom-ctrl">
+          <button class="icon-btn" id="zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button class="icon-btn" id="zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+          <button class="icon-btn" id="zoom-reset" aria-label="Reset view"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        </div>
+
+        <!-- ZIP card -->
+        <div class="zip-card" id="zip-card" hidden>
+          <div class="zip-card-label">Find this ZIP</div>
+          <div class="zip-digits" id="zip-digits"></div>
+          <div class="zip-hint" id="zip-hint"></div>
+        </div>
+
+        <!-- Result toast -->
+        <div class="result" id="result" hidden>
+          <div class="result-points" id="result-points">+0</div>
+          <div class="result-place" id="result-place"></div>
+          <div class="result-dist" id="result-dist"></div>
+          <div class="meter"><div class="meter-fill" id="result-meter"></div></div>
+        </div>
+
+        <div class="toast" id="toast" hidden></div>
+      </div>
+
+      <!-- Action bar -->
+      <div class="actions" id="actions" hidden>
+        <button class="btn ghost" id="btn-hint">Reveal state <span class="tag">½ pts</span></button>
+        <button class="btn primary" id="btn-guess" disabled>Drop a pin on the map</button>
+        <button class="btn primary" id="btn-next" hidden>Next ZIP →</button>
+        <button class="btn ghost" id="btn-end" hidden>End run</button>
+      </div>
+    </main>
+
+    <!-- Menu -->
+    <section class="overlay" id="menu">
+      <div class="panel">
+        <div class="stamp">
+          <div class="stamp-inner">
+            <div class="stamp-top">USA · ZIP</div>
+            <div class="stamp-zip" id="menu-zip">90210</div>
+            <div class="stamp-bottom">Where in the U.S.?</div>
+          </div>
+        </div>
+        <h1>Zip<b>Drop</b></h1>
+        <p class="lede">You get a ZIP code. Drop a pin where you think it is. Closer pins score more, up to <b>5,000</b> points a round.</p>
+
+        <div class="modes">
+          <button class="mode" data-mode="classic">
+            <span class="mode-title">Classic</span>
+            <span class="mode-sub">10 random ZIPs</span>
+            <span class="mode-best" id="best-classic"></span>
+          </button>
+          <button class="mode" data-mode="daily">
+            <span class="mode-title">Daily</span>
+            <span class="mode-sub">Same 5 ZIPs for everyone today</span>
+            <span class="mode-best" id="best-daily"></span>
+          </button>
+          <button class="mode" data-mode="endless">
+            <span class="mode-title">Endless</span>
+            <span class="mode-sub">Keep going until you stop</span>
+            <span class="mode-best" id="best-endless"></span>
+          </button>
+        </div>
+
+        <label class="toggle">
+          <input type="checkbox" id="opt-timer">
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span>30-second timer per round</span>
+        </label>
+
+        <details class="how">
+          <summary>How scoring works</summary>
+          <ul>
+            <li>Within 5 miles is a perfect <b>5,000</b>.</li>
+            <li>Points fall off with distance: about 3,600 at 100 mi and 700 at 600 mi.</li>
+            <li>Revealing the state halves that round's points.</li>
+            <li>Tip: the first digit of a ZIP is the region. 0 is New England, 9 is the West Coast.</li>
+          </ul>
+        </details>
+        <div class="loading" id="loading">Loading map and ZIP data…</div>
+        <p class="credit">ZIP data © <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0) · Imagery © Esri</p>
+      </div>
+    </section>
+
+    <!-- Summary -->
+    <section class="overlay" id="summary" hidden>
+      <div class="panel wide">
+        <div class="summary-head">
+          <div class="summary-rank" id="sum-rank">Mail Carrier</div>
+          <div class="summary-total"><span id="sum-total">0</span><small id="sum-max">/ 50,000</small></div>
+          <div class="summary-sub" id="sum-sub"></div>
+        </div>
+        <ol class="rounds" id="sum-rounds"></ol>
+        <div class="summary-actions">
+          <button class="btn ghost" id="btn-share">Copy result</button>
+          <button class="btn ghost" id="btn-view-map">View map</button>
+          <button class="btn primary" id="btn-again">Play again</button>
+          <button class="btn ghost" id="btn-menu">Menu</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/topojson-client.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
