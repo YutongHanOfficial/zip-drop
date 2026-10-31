@@ -98,30 +98,47 @@
   }
   document.querySelectorAll("#basemap-ctrl button").forEach((b) => { b.onclick = () => setBasemap(b.dataset.layer); });
   document.querySelectorAll("#region-ctrl button").forEach((b) => {
-    b.onclick = () => map.flyToBounds(REGIONS[b.dataset.region], { duration: 0.8 });
+    b.onclick = () => flyToBounds(REGIONS[b.dataset.region], { duration: 0.8 });
   });
 
   setBasemap(store.get("basemap", "hybrid"));
 
   const overlay = L.layerGroup().addTo(map);
 
+  // Keep Leaflet's idea of the container size current (layout changes, hidden tabs).
+  if (window.ResizeObserver) new ResizeObserver(() => map.invalidateSize()).observe(el.map);
+
+  // Leaflet's fly animation divides by the container size, so a map that was laid out
+  // at 0×0 (e.g. loaded in a background tab) breaks it. Re-measure first, and jump
+  // without animating when there is still no size or the current view is invalid.
+  function canAnimate() {
+    map.invalidateSize(false);
+    const s = map.getSize();
+    return s.x > 0 && s.y > 0 && Number.isFinite(map.getZoom());
+  }
+  function flyToBounds(bounds, opts) {
+    if (canAnimate()) map.flyToBounds(bounds, opts);
+    else map.fitBounds(bounds, { ...opts, animate: false });
+  }
+
   $("zoom-in").onclick = () => map.zoomIn(1);
   $("zoom-out").onclick = () => map.zoomOut(1);
   $("zoom-reset").onclick = () => resetView();
 
   function resetView(animate = true) {
-    if (animate) map.flyToBounds(US_BOUNDS, { duration: 0.6 });
-    else map.fitBounds(US_BOUNDS, { animate: false });
+    if (animate) flyToBounds(US_BOUNDS, { duration: 0.6 });
+    else { map.invalidateSize(false); map.fitBounds(US_BOUNDS, { animate: false }); }
   }
 
   // points are [lon, lat]. Leave room at the top for the result card.
   function fitPoints(points) {
     const latlngs = points.map(([lon, lat]) => [lat, lon]);
     if (latlngs.length === 1) {
-      map.flyTo(latlngs[0], 7, { duration: 0.9 });
+      if (canAnimate()) map.flyTo(latlngs[0], 7, { duration: 0.9 });
+      else map.setView(latlngs[0], 7, { animate: false });
       return;
     }
-    map.flyToBounds(L.latLngBounds(latlngs), {
+    flyToBounds(L.latLngBounds(latlngs), {
       paddingTopLeft: [70, 180], paddingBottomRight: [70, 50], maxZoom: 11, duration: 0.9,
     });
   }
@@ -510,7 +527,7 @@
     game.rounds.forEach((r) => { if (r.guess) drawGuessPin(r.guess.lonlat); });
     game.rounds.forEach((r) => drawActual([r.zip[5], r.zip[4]], r.zip[0], false));
     const pts = game.rounds.flatMap((r) => [[r.zip[4], r.zip[5]], ...(r.guess ? [[r.guess.lonlat[1], r.guess.lonlat[0]]] : [])]);
-    map.flyToBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 9, duration: 0.8 });
+    flyToBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 9, duration: 0.8 });
     el.actions.hidden = false;
     el.hint.hidden = true;
     el.guess.hidden = true;
